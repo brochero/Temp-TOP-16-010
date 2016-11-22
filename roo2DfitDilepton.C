@@ -1,4 +1,5 @@
 // Possible Scenarios
+// "Basic"
 // "Vis_NoNuisance"
 // "Full_NoNuisance"
 // "Vis_Nuisance"
@@ -10,6 +11,10 @@ void roo2DfitDilepton(TString Scenario = "Vis_NoNuisance"){
 
   gSystem->Load("libRooFit") ;
   using namespace RooFit;
+  gROOT->SetStyle("Plain");
+  gStyle->SetOptFit(1000);
+  gStyle->SetOptStat("emruo");
+  gStyle->SetOptStat(kFALSE);
 
   TFile* fInput  = new TFile("ttbb_top-16-010.root");
 
@@ -46,8 +51,11 @@ void roo2DfitDilepton(TString Scenario = "Vis_NoNuisance"){
   RooFormulaVar *Full_Xsecttbb_Xsecttjj = new RooFormulaVar("Full_Xsecttbb_Xsecttjj", "Xsecttbb/Xsecttjj Full-PhSp", "Full_Xsecttbb/Full_Xsecttjj", RooArgList(*Full_Xsecttbb,*Full_Xsecttjj));
 
   // Efficiencies and Acceptances
-  RooRealVar *Effttjj_nom  = new RooRealVar("Effttjj_nom",  "Nom. ttjj Efficiency",  0.1165);//, 0.05, 0.16);
-  RooRealVar *Effttbb_nom  = new RooRealVar("Effttbb_nom",  "Nom. ttbb Efficiency",  0.2692);//, 0.16, 0.36);
+  RooRealVar *Effttjj_nom  = new RooRealVar("Effttjj_nom",  "Nom. ttjj Efficiency",  0.1165); //, 0.05, 0.16);
+  // RooRealVar *Effttbb_nom  = new RooRealVar("Effttbb_nom",  "Nom. ttbb Efficiency",  0.2692); //, 0.16, 0.36);
+  //RooRealVar *Effttjj_nom  = new RooRealVar("Effttjj_nom",  "Nom. ttjj Efficiency",  0.1165+(0.1165*0.05)); // +/- 5%
+  RooRealVar *Effttbb_nom  = new RooRealVar("Effttbb_nom",  "Nom. ttbb Efficiency",  0.2692+(0.2692*0.05));    // +/- 5% 
+
   RooRealVar *Accttjj_nom  = new RooRealVar("Accttjj_nom",  "Nom. ttjj Acceptance",  0.020);
   RooRealVar *Accttbb_nom  = new RooRealVar("Accttbb_nom",  "Nom. ttbb Acceptance",  0.022);
 
@@ -58,6 +66,9 @@ void roo2DfitDilepton(TString Scenario = "Vis_NoNuisance"){
   RooRealVar *CSV2 = new RooRealVar("CSV2", "CSV for Jet 3", httbb->GetXaxis()->GetXmin(), httbb->GetXaxis()->GetXmax()); 
   RooRealVar *CSV3 = new RooRealVar("CSV3", "CSV for Jet 4", httbb->GetYaxis()->GetXmin(), httbb->GetYaxis()->GetXmax());  
       
+  // ttjj
+  RooRealVar *Nttjj = new RooRealVar("Nttjj",    "number of ttjj events", (httbb->Integral() + httbj->Integral() + httccLF->Integral()));
+
   // Background
   RooRealVar *NBkgtt    = new RooRealVar("NBkgtt",    "number of tt background events",          hBkgtt->Integral());
   RooRealVar *NBkgOther = new RooRealVar("NBkgOther", "number of Other background events",       hBkgOther->Integral());
@@ -100,6 +111,46 @@ void roo2DfitDilepton(TString Scenario = "Vis_NoNuisance"){
   HPBkgtt    = new RooHistPdf("HPBkgtt",    "PDF for Bkgtt",    RooArgSet(*arg_CSV), *DHBkgtt);
   HPBkgOther = new RooHistPdf("HPBkgOther", "PDF for BkgOther", RooArgSet(*arg_CSV), *DHBkgOther);
   HPBkgDD    = new RooHistPdf("HPBkgDD",    "PDF for BkgDD",    RooArgSet(*arg_CSV), *DHBkgDD);
+
+
+  // ----------------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------------
+  
+  //////////////////////////////////
+  // WorkSpace 0: Basic Fit Model //
+  //////////////////////////////////
+  
+  RooWorkspace *WS_Bas = new RooWorkspace("Fit ttbb/ttjj");
+  
+  // Parameters
+  WS_Bas->import(*CSV2);
+  WS_Bas->import(*CSV3);
+  WS_Bas->import(*arg_CSV);
+  
+  // Variables at RECO Level
+  WS_Bas->import(*Nttjj);
+  WS_Bas->factory("Reco_XsecRatiottbbttjj[0.044,0.,0.5]");
+  WS_Bas->factory("prod::Reco_XsecRatiottbjttjj(2.43276,Reco_XsecRatiottbbttjj)"); // 2.43276 from ttbj/ttbb
+  WS_Bas->factory("k[1.,0.,2.]");
+
+  WS_Bas->import(*NBkgtt);
+  WS_Bas->import(*NBkgOther);
+  WS_Bas->import(*NBkgDD);
+
+  // P.D.F.
+  WS_Bas->import(*HPttbb);
+  WS_Bas->import(*HPttbj);
+  WS_Bas->import(*HPttccLF);
+
+  WS_Bas->import(*HPBkgtt);
+  WS_Bas->import(*HPBkgOther);
+  WS_Bas->import(*HPBkgDD);
+    
+  // Model Implementation For the Visible Ph-Sp
+  WS_Bas->factory("SUM::Reco_ttjj(Reco_XsecRatiottbbttjj*HPttbb,Reco_XsecRatiottbjttjj*HPttbj,HPttccLF)");
+  WS_Bas->factory("SUM::Reco_Model(prod(k,Nttjj)*Reco_ttjj,prod(k,NBkgtt)*HPBkgtt,NBkgOther*HPBkgOther,NBkgDD*HPBkgDD)");
+
+  WS_Bas->Print();
 
   // ----------------------------------------------------------------------------------
   // ----------------------------------------------------------------------------------
@@ -246,12 +297,28 @@ void roo2DfitDilepton(TString Scenario = "Vis_NoNuisance"){
   // Fits
   // --------------------------------------------
 
-  if(Scenario == "Vis_NoNuisance")  WS->pdf("Vis_Model")->fitTo(*DHData);
-  if(Scenario == "Full_NoNuisance") WS->pdf("Full_Model")->fitTo(*DHData);
+  RooAbsReal *nll_ratio;
 
-  if(Scenario == "Vis_Nuisance")  WS_Sys->pdf("Vis_Model")->fitTo(*DHData);
-  if(Scenario == "Full_Nuisance") WS_Sys->pdf("Full_Model")->fitTo(*DHData);
+  if(Scenario == "Basic") nll_ratio = WS_Bas->pdf("Reco_Model")->createNLL(*DHData);
+
+  if(Scenario == "Vis_NoNuisance")  nll_ratio = WS->pdf("Vis_Model")->createNLL(*DHData);
+  if(Scenario == "Full_NoNuisance") nll_ratio = WS->pdf("Full_Model")->createNLL(*DHData);
+
+  if(Scenario == "Vis_Nuisance") nll_ratio = WS_Sys->pdf("Vis_Model")->createNLL(*DHData);
+if(Scenario == "Full_Nuisance")  nll_ratio = WS_Sys->pdf("Full_Model")->createNLL(*DHData);
  
+  RooMinimizer m(*nll_ratio);
+  m.migrad();
+  m.hesse();
+
+  RooFitResult *r = m.save();
+
+  TCanvas *canvas_corr = new TCanvas("canvas_corr",   "Correlation Plot");
+  canvas_corr->cd();
+  r->correlationHist()->Draw("coltext"); 
+  
+  canvas_corr->SaveAs("CorrMatrix_" + Scenario + ".pdf");
+
 }
 
 
